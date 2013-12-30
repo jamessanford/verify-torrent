@@ -1,0 +1,241 @@
+#!/usr/bin/python
+
+"""Show completed files from torrent metadata.
+
+Use cases:
+- Started a long transfer and want to stop it before it's done,
+  but use the files that are complete?
+- Forgot which files you selected/prioritized out of a large torrent?
+
+Print out completed files, like 'find':
+  % verify file.torrent
+
+Example to save a 'copy' of only the completed files for analysis:
+
+# First, duplicate the directory tree into 'save':
+  % find torrentdir -type d -print0 | xargs -0 -n 1 -I I mkdir -p save/I
+
+# Then, hard link the completed files into 'save':
+  % verify -0 file.torrent | xargs -0 -n 1 -I I ln I save/I
+
+ Finally, you can rm -rf the incomplete 'torrentdir'.
+ Or, if the transfer is still in progress, you can rerun the verify pipeline.
+
+Operational Caveat:
+  You should leave the incomplete torrent files intact before running this.
+
+  To know if a file is valid, the entire surrounding piece must be valid,
+  and this piece likely covers multiple files.  If you remove known incomplete
+  files, this piece data will be unavailable for checksum and now you cannot
+  determine the validity of the rest of the files covered by the piece.
+"""
+
+import argparse
+import hashlib
+import logging
+import sys
+
+# libtorrent rasterbar via python-libtorrent
+import libtorrent
+
+log = logging.getLogger('verify')
+args = None  # via RegisterFlags().parse_args()
+
+
+class PieceVerifier(object):
+  def __init__(self, torrent, output=None):
+    self.torrent = torrent  # libtorrent torrent_info
+    self.output = output    # OutputDisplay
+
+    # Mapping of int piecenum: False/True (known bad/known good)
+    self.pieces_known = dict()
+
+  @staticmethod
+  def read_slice(file_entry, file_slice, current_hash):
+    # Read a slice of a file and update the hash.
+    #  file_entry: libtorrent struct file_entry
+    #  file_slice: libtorrent struct file_slice
+    #  current_hash: hashlib.sha1() to update
+    #
+    # Returns:
+    #   True if able to read the slice and update the hash
+    #   False on error
+
+    try:
+      f = open(file_entry.path, 'rb')
+    except IOError:
+      log.warning('NO FILE: %s', file_entry.path)
+      return False
+
+    with f:
+      f.seek(file_slice.offset)
+
+      # Only read the number of bytes in this slice, not the entire file.
+      read_bytes = 0
+      need_bytes = min(file_slice.size - read_bytes, 2 ** 20)
+      while need_bytes > 0:
+        d = f.read(need_bytes)
+        if not len(d):
+          log.info('...ran out of bytes to read: %s', file_entry.path)
+          return False
+        current_hash.update(d)
+        read_bytes += len(d)
+        need_bytes = min(file_slice.size - read_bytes, 2 ** 20)
+
+    return True
+
+  def verify(self, piecenum):
+    # A piece covers one or more file ranges, spanning one or more files.
+    # For the entire piece to be valid, read all of the ranges in all of the
+    # files and verify the checksum.
+
+    if piecenum in self.pieces_known:
+      return self.pieces_known[piecenum]
+
+    if not args.quiet and self.output is not None:
+      self.output.show_progress(piecenum, self.torrent.num_pieces())
+
+    current_hash = hashlib.sha1()
+    expected_hash = self.torrent.hash_for_piece(piecenum)
+
+    piece_size = self.torrent.piece_size(piecenum)
+    for file_slice in self.torrent.map_block(piecenum, 0, piece_size):
+      # file_slice has file_index, offset, size
+      file_entry = self.torrent.file_at(file_slice.file_index)
+
+      # TODO: what to do in this case...?
+      if file_entry.file_base != 0:
+        log.critical('file #%s has file_base %s',
+                     file_slice.file_index, file_entry.file_base)
+        self.pieces_known[piecenum] = False
+        return False
+
+      log.debug('should check index#%s offset=%s size=%s',
+                file_slice.file_index, file_slice.offset, file_slice.size)
+
+      if not self.read_slice(file_entry, file_slice, current_hash):
+        # error
+        self.pieces_known[piecenum] = False
+        return False
+
+    if expected_hash != current_hash.digest():
+      log.info('CHECKSUM ERROR: piece %d expected %s , got %s',
+               piecenum,
+               expected_hash.encode('hex'),
+               current_hash.digest().encode('hex'))
+      self.pieces_known[piecenum] = False
+      return False
+
+    self.pieces_known[piecenum] = True
+    return True
+
+
+def VerifyTorrent(filename, output):
+  try:
+    torrent = libtorrent.torrent_info(filename)
+  except RuntimeError as e:
+    log.error('Unable to parse "%s": %s', filename, e)
+    sys.exit(1)
+
+  pv = PieceVerifier(torrent=torrent, output=output)
+
+  # TODO: could just use 'filehash' when present
+
+  for filenum in xrange(torrent.num_files()):
+    # TODO: Check the file length first, because verifying the pieces alone
+    # wont show if the file has extra data at the end of the file.
+    start = torrent.map_file(filenum, 0, 1).piece
+    # Files are apparently always a contiguous range of pieces.
+    end = torrent.map_file(filenum, torrent.file_at(filenum).size - 1, 1).piece
+    log.debug('FILE %s %s %s', filenum, start, end)
+
+    for piece in xrange(start, end + 1):
+      if not pv.verify(piece):
+        break
+    else:
+      # All pieces for this file are valid!
+      output.valid(filenum, torrent.file_at(filenum).path)
+
+
+class OutputDisplay(object):
+  def __init__(self):
+    self.num_valid = 0
+    self.valid_filenums = []  # Only used with args.select_file
+    self.progress_len = 0
+
+  def erase_progress(self):
+    if self.progress_len:
+      # kinda lame.
+      sys.stderr.write(' ' * self.progress_len)
+      sys.stderr.write('\r')
+      sys.stderr.flush()
+
+  def show_progress(self, piecenum, num_pieces):
+    progress = ('verify %s/%s (%.0f%%) (%d valid)\r' % (piecenum, num_pieces,
+                100 * piecenum / num_pieces, self.num_valid))
+    self.progress_len = len(progress)
+    sys.stderr.write(progress)
+    sys.stderr.flush()
+
+  def valid(self, filenum, filename):
+    self.num_valid += 1
+    # TODO: Make sure the filenames are VALID UTF-8?  Not arbitrary data.
+    if args.null:
+      sys.stdout.write(filename)
+      sys.stdout.write('\0')
+      sys.stdout.flush()  # do not wait for the output buffer to fill
+    elif args.select_file:
+      self.valid_filenums.append(filenum)
+    else:
+      self.erase_progress()
+      print '%s' % filename
+
+  def finish(self):
+    self.erase_progress()
+    if args.select_file:
+      # TODO: could collapse this into ranges
+      sys.stdout.write('--select-file=%s\n'
+                       % ','.join('%s' % v for v in self.valid_filenums))
+
+
+def RegisterFlags():
+  description = 'Show completed filenames given a .torrent metadata file.'
+  parser = argparse.ArgumentParser(description=description)
+  parser.add_argument('-v, --verbose', dest='verbose', action='store_true',
+                      help='show checksum failures')
+  # TODO: more flags?
+  #   -f  force piece checking, do not use filehash
+  #   -vv  include log.debug?
+  parser.add_argument('-q, --quiet', dest='quiet', action='store_true',
+                      help='quiet mode, do not show progress indicator')
+  # TODO: disallow combination of -0 and -s
+  parser.add_argument('-0, -print0', dest='null', action='store_true',
+                      help='output null \\0 terminated filenames for xargs -0')
+  parser.add_argument('-s, --select-file', dest='select_file',
+                      action='store_true',
+                      help='output as list of file numbers '
+                           'for aria2c --select-file')
+  parser.add_argument('filename', metavar='FILE.torrent',
+                      help='torrent metadata file')
+  return parser
+
+
+if __name__ == '__main__':
+  format = '%(filename)s:%(lineno)d %(levelname)s: %(message)s'
+  logging.basicConfig(format=format, level=logging.ERROR)
+
+  parser = RegisterFlags()
+  if len(sys.argv) == 1:
+    # Force full help output when run without args.
+    parser.print_help()
+    parser.exit(2, '\nerror: missing filename argument\n')
+  args = parser.parse_args()
+
+  if args.verbose:
+    log.setLevel(logging.INFO)
+
+  output = OutputDisplay()
+  VerifyTorrent(args.filename, output)
+  output.finish()
+
+  sys.exit(0)
