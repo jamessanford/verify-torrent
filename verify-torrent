@@ -163,6 +163,12 @@ class OutputDisplay(object):
     self.valid_filenums = []  # Only used with args.select_file
     self.progress_len = 0
 
+  def __enter__(self):
+    return self
+
+  def __exit__(self, *args):
+    self.finish()
+
   def erase_progress(self):
     if self.progress_len:
       # kinda lame.
@@ -234,8 +240,7 @@ if __name__ == '__main__':
   if args.verbose:
     log.setLevel(logging.INFO)
 
-  output = OutputDisplay()
-  VerifyTorrent(args.filename, output)
-  output.finish()
+  with OutputDisplay() as output:
+    VerifyTorrent(args.filename, output)
 
   sys.exit(0)
