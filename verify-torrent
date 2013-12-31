@@ -38,8 +38,26 @@ import sys
 # libtorrent rasterbar via python-libtorrent
 import libtorrent
 
+ARGS = argparse.ArgumentParser(description='Show completed filenames '
+                                           'given a .torrent metadata file.')
+ARGS.add_argument('-v, --verbose', dest='verbose', action='store_true',
+                  help='show checksum failures')
+# TODO: more flags?
+#   -f   force piece checking, do not use filehash
+#   -vv  include log.debug?
+ARGS.add_argument('-q, --quiet', dest='quiet', action='store_true',
+                  help='quiet mode, do not show progress indicator')
+# TODO: disallow combination of -0 and -s
+ARGS.add_argument('-0, -print0', dest='null', action='store_true',
+                  help='output null \\0 terminated filenames for xargs -0')
+ARGS.add_argument('-s, --select-file', dest='select_file', action='store_true',
+                  help='output as list of file numbers '
+                       'for aria2c --select-file')
+ARGS.add_argument('filename', metavar='FILE.torrent',
+                  help='torrent metadata file')
+
+args = None  # ARGS.parse_args()
 log = logging.getLogger('verify')
-args = None  # via RegisterFlags().parse_args()
 
 
 class PieceVerifier(object):
@@ -204,38 +222,15 @@ class OutputDisplay(object):
                        % ','.join('%s' % v for v in self.valid_filenums))
 
 
-def RegisterFlags():
-  description = 'Show completed filenames given a .torrent metadata file.'
-  parser = argparse.ArgumentParser(description=description)
-  parser.add_argument('-v, --verbose', dest='verbose', action='store_true',
-                      help='show checksum failures')
-  # TODO: more flags?
-  #   -f  force piece checking, do not use filehash
-  #   -vv  include log.debug?
-  parser.add_argument('-q, --quiet', dest='quiet', action='store_true',
-                      help='quiet mode, do not show progress indicator')
-  # TODO: disallow combination of -0 and -s
-  parser.add_argument('-0, -print0', dest='null', action='store_true',
-                      help='output null \\0 terminated filenames for xargs -0')
-  parser.add_argument('-s, --select-file', dest='select_file',
-                      action='store_true',
-                      help='output as list of file numbers '
-                           'for aria2c --select-file')
-  parser.add_argument('filename', metavar='FILE.torrent',
-                      help='torrent metadata file')
-  return parser
-
-
 if __name__ == '__main__':
   format = '%(filename)s:%(lineno)d %(levelname)s: %(message)s'
   logging.basicConfig(format=format, level=logging.ERROR)
 
-  parser = RegisterFlags()
   if len(sys.argv) == 1:
     # Force full help output when run without args.
-    parser.print_help()
-    parser.exit(2, '\nerror: missing filename argument\n')
-  args = parser.parse_args()
+    ARGS.print_help()
+    ARGS.exit(2, '\nerror: missing filename argument\n')
+  args = ARGS.parse_args()
 
   if args.verbose:
     log.setLevel(logging.INFO)
