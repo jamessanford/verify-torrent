@@ -8,7 +8,7 @@ Use cases:
 - Forgot which files you selected/prioritized out of a large torrent?
 
 Print out completed files, like 'find':
-  % verify file.torrent
+  % verify-torrent file.torrent
 
 Example to save a 'copy' of only the completed files for analysis:
 
@@ -16,7 +16,7 @@ Example to save a 'copy' of only the completed files for analysis:
   % find torrentdir -type d -print0 | xargs -0 -n 1 -I I mkdir -p save/I
 
 # Then, hard link the completed files into 'save':
-  % verify -0 file.torrent | xargs -0 -n 1 -I I ln I save/I
+  % verify-torrent -0 file.torrent | xargs -0 -n 1 -I I ln I save/I
 
  Finally, you can rm -rf the incomplete 'torrentdir'.
  Or, if the transfer is still in progress, you can rerun the verify pipeline.
