@@ -10,7 +10,21 @@ Use cases:
 Print out completed files, like 'find':
   % verify-torrent file.torrent
 
-Example to save a 'copy' of only the completed files for analysis:
+Create a hard links to all the completed files:
+  % verify-torrent --link=SAVE file.torrent
+
+  You can run this while the torrent is in progress.
+  The SAVE directory will contain only the completed files.
+  Rerun the command to link any new files that have been completed.
+
+  If the torrent is no longer in progress, it is now safe to delete
+  the original incomplete directory and just keep the SAVE directory.
+
+Generate a '--select-file' command line to seed only completed files:
+  % verify-torrent -s file.torrent
+  --select-file=3,10,13
+
+To do '--link' by hand as a shell pipeline:
 
 # First, duplicate the directory tree into 'save':
   % find torrentdir -type d -print0 | xargs -0 -n 1 -I I mkdir -p save/I
@@ -22,7 +36,7 @@ Example to save a 'copy' of only the completed files for analysis:
  Or, if the transfer is still in progress, you can rerun the verify pipeline.
 
 Operational Caveat:
-  You should leave the incomplete torrent files intact before running this.
+  Leave the incomplete torrent files intact before running verify-torrent.
 
   To know if a file is valid, the entire surrounding piece must be valid,
   and this piece likely covers multiple files.  If you remove known incomplete
@@ -31,8 +45,10 @@ Operational Caveat:
 """
 
 import argparse
+import errno
 import hashlib
 import logging
+import os
 import sys
 
 # libtorrent rasterbar via python-libtorrent
@@ -50,6 +66,8 @@ ARGS.add_argument('-q, --quiet', dest='quiet', action='store_true',
 # TODO: disallow combination of -0 and -s
 ARGS.add_argument('-0, -print0', dest='null', action='store_true',
                   help='output null \\0 terminated filenames for xargs -0')
+ARGS.add_argument('--link', dest='link', type=str, metavar='DIR',
+                  help='link completed files into this directory')
 ARGS.add_argument('-s, --select-file', dest='select_file', action='store_true',
                   help='output as list of file numbers '
                        'for aria2c --select-file')
@@ -156,6 +174,7 @@ def VerifyTorrent(filename, output):
     sys.exit(1)
 
   pv = PieceVerifier(torrent=torrent, output=output)
+  autolink = CompletedFileLinker()  # for --link=dir
 
   # TODO: could just use 'filehash' when present
 
@@ -172,7 +191,42 @@ def VerifyTorrent(filename, output):
         break
     else:
       # All pieces for this file are valid!
-      output.valid(filenum, torrent.file_at(filenum).path)
+      filename = torrent.file_at(filenum).path
+      output.valid(filenum, filename)
+      if args.link:
+        autolink.link(filename)
+
+
+class CompletedFileLinker(object):
+  def __init__(self):
+    self.dirs = dict()  # cache of known directories to avoid lots of mkdirs
+
+  def link(self, filename):
+    """Link 'filename' into the args.link directory."""
+    if not args.link:
+      return
+    filename = filename.strip('/')
+
+    if '/../' in '/%s/' % filename:
+      log.warning('cowardly refusing to link "%s"', filename)
+      return
+
+    destfile = '%s/%s' % (args.link, filename)
+    destdir = destfile.rsplit('/', 1)[0]
+
+    if destdir not in self.dirs:
+      self.dirs[destdir] = True  # always mark as known, even if makedirs fails
+      try:
+        os.makedirs(destdir)
+      except OSError as e:
+        if e.errno != errno.EEXIST:
+          log.error('cannot create dir "%s": %s', destdir, e)
+
+    try:
+      os.link(filename, destfile)
+    except OSError as e:
+      if e.errno != errno.EEXIST:
+        log.error('cannot create link "%s": %s', destfile, e)
 
 
 class OutputDisplay(object):
