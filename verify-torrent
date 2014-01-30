@@ -10,7 +10,7 @@ Use cases:
 Print out completed files, like 'find':
   % verify-torrent file.torrent
 
-Create a hard links to all the completed files:
+Create hard links to all the completed files:
   % verify-torrent --link=SAVE file.torrent
 
   You can run this while the torrent is in progress.
