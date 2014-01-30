@@ -25,18 +25,18 @@ original incomplete directory and just keep the `SAVE` directory.
 
 ###To do `--link` by hand as a shell pipeline:
 
-#####First, duplicate the directory tree into 'save':
+First, duplicate the directory tree into 'save':
 ```
 % find torrentdir -type d -print0 | xargs -0 -n 1 -I I mkdir -p save/I
 ```
 
-#####Then, hard link the completed files into 'save':
+Then, hard link the completed files into 'save':
 ```
 % verify-torrent -0 file.torrent | xargs -0 -n 1 -I I ln I save/I
 ```
 
-#####Finally, you can **rm -rf** the incomplete 'torrentdir'.
-#####Or, if the transfer is still in progress, you can rerun the verify pipeline.
+Finally, you can `rm -rf` the incomplete 'torrentdir'.
+Or, if the transfer is still in progress, you can rerun the verify pipeline.
 
 > ###Operational Caveat:
 >  Leave the incomplete torrent files intact before running verify-torrent.
