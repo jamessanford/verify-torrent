@@ -7,7 +7,7 @@
 
 ###Create hard links to all the completed files:
 ```
-  % verify-torrent --link=SAVE file.torrent
+% verify-torrent --link=SAVE file.torrent
 ```
 
 You can run this while the torrent is in progress.
@@ -19,8 +19,8 @@ original incomplete directory and just keep the `SAVE` directory.
 
 ###Generate a `--select-file` command line to seed only completed files:
 ```
-  % verify-torrent -s file.torrent
-  --select-file=3,10,13
+% verify-torrent -s file.torrent
+--select-file=3,10,13
 ```
 
 ###To do `--link` by hand as a shell pipeline:
