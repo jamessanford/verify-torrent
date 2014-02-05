@@ -133,6 +133,10 @@ class PieceVerifier(object):
 
     current_hash = hashlib.sha1()
     expected_hash = self.torrent.hash_for_piece(piecenum)
+    if not hasattr(expected_hash, 'encode'):
+      # Some versions of libtorrent give back a big_number object,
+      # but we want a binary string of the SHA1.
+      expected_hash = str(expected_hash).decode('hex')
 
     piece_size = self.torrent.piece_size(piecenum)
     for file_slice in self.torrent.map_block(piecenum, 0, piece_size):
@@ -263,7 +267,7 @@ class OutputDisplay(object):
       sys.stdout.write('\0')
       sys.stdout.flush()  # do not wait for the output buffer to fill
     elif args.select_file:
-      self.valid_filenums.append(filenum)
+      self.valid_filenums.append(filenum + 1)  # NOTE: aria2c starts from file 1
     else:
       self.erase_progress()
       print '%s' % filename
