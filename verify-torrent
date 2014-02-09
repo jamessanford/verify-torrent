@@ -71,7 +71,7 @@ ARGS.add_argument('--link', dest='link', type=str, metavar='DIR',
 ARGS.add_argument('-s, --select-file', dest='select_file', action='store_true',
                   help='output as list of file numbers '
                        'for aria2c --select-file')
-ARGS.add_argument('filename', metavar='FILE.torrent',
+ARGS.add_argument('filename', nargs='+', metavar='FILE.torrent',
                   help='torrent metadata file')
 
 args = None  # ARGS.parse_args()
@@ -293,7 +293,8 @@ if __name__ == '__main__':
   if args.verbose:
     log.setLevel(logging.INFO)
 
-  with OutputDisplay() as output:
-    VerifyTorrent(args.filename, output)
+  for filename in args.filename:
+    with OutputDisplay() as output:
+      VerifyTorrent(filename, output)
 
   sys.exit(0)
