@@ -234,7 +234,8 @@ class CompletedFileLinker(object):
 
 
 class OutputDisplay(object):
-  def __init__(self):
+  def __init__(self, metadata_filename):
+    self.metadata_filename = metadata_filename
     self.num_valid = 0
     self.valid_filenums = []  # Only used with args.select_file
     self.progress_len = 0
@@ -275,9 +276,11 @@ class OutputDisplay(object):
   def finish(self):
     self.erase_progress()
     if args.select_file:
-      # TODO: could collapse this into ranges
-      sys.stdout.write('--select-file=%s\n'
-                       % ','.join('%s' % v for v in self.valid_filenums))
+      if self.valid_filenums:
+        # TODO: could collapse this into ranges
+        sys.stdout.write('--select-file=%s %s\n' %
+                         (','.join('%s' % v for v in self.valid_filenums),
+                          self.metadata_filename))
 
 
 if __name__ == '__main__':
@@ -294,7 +297,7 @@ if __name__ == '__main__':
     log.setLevel(logging.INFO)
 
   for filename in args.filename:
-    with OutputDisplay() as output:
+    with OutputDisplay(filename) as output:
       VerifyTorrent(filename, output)
 
   sys.exit(0)
