@@ -66,6 +66,8 @@ ARGS.add_argument('-q, --quiet', dest='quiet', action='store_true',
 # TODO: disallow combination of -0 and -s
 ARGS.add_argument('-0, -print0', dest='null', action='store_true',
                   help='output null \\0 terminated filenames for xargs -0')
+ARGS.add_argument('--cheat', dest='cheat', action='store_true',
+                  help='assume already-linked files have valid checksums')
 ARGS.add_argument('--link', dest='link', type=str, metavar='DIR',
                   help='link completed files into this directory')
 ARGS.add_argument('-s, --select-file', dest='select_file', action='store_true',
@@ -119,6 +121,9 @@ class PieceVerifier(object):
         need_bytes = min(file_slice.size - read_bytes, 2 ** 20)
 
     return True
+
+  def assume(self, piecenum, status):
+    self.pieces_known[piecenum] = status
 
   def verify(self, piecenum):
     # A piece covers one or more file ranges, spanning one or more files.
@@ -183,6 +188,8 @@ def VerifyTorrent(filename, output):
   # TODO: could just use 'filehash' when present
 
   for filenum in xrange(torrent.num_files()):
+    filename = torrent.file_at(filenum).path
+
     # TODO: Check the file length first, because verifying the pieces alone
     # wont show if the file has extra data at the end of the file.
     start = torrent.map_file(filenum, 0, 1).piece
@@ -190,12 +197,17 @@ def VerifyTorrent(filename, output):
     end = torrent.map_file(filenum, torrent.file_at(filenum).size - 1, 1).piece
     log.debug('FILE %s %s %s', filenum, start, end)
 
+    # In cheat mode, assume that already-linked files had valid checksums.
+    # This makes it much faster to scan only for new unlinked files.
+    cheating = args.cheat and autolink.is_linked(filename)
+
     for piece in xrange(start, end + 1):
-      if not pv.verify(piece):
+      if cheating:
+        pv.assume(piece, True)
+      elif not pv.verify(piece):
         break
     else:
       # All pieces for this file are valid!
-      filename = torrent.file_at(filenum).path
       output.valid(filenum, filename)
       if args.link:
         autolink.link(filename)
@@ -205,18 +217,41 @@ class CompletedFileLinker(object):
   def __init__(self):
     self.dirs = dict()  # cache of known directories to avoid lots of mkdirs
 
+  @staticmethod
+  def parse_filename(filename):
+    """Returns ok, destdir, destfile."""
+    if not args.link:
+      return False, None, None
+
+    filename = filename.strip('/')
+    if '/../' in '/%s/' % filename:
+      log.warning('cowardly refusing to check "%s"', filename)
+      return False, None, None
+
+    destfile = '%s/%s' % (args.link, filename)
+    destdir = destfile.rsplit('/', 1)[0]
+    return True, destdir, destfile
+
+  def is_linked(self, filename):
+    if not args.link:
+      return False
+
+    ok, destdir, destfile = self.parse_filename(filename)
+    if not ok:
+      return False
+
+    return os.access(destfile, os.F_OK)
+
   def link(self, filename):
     """Link 'filename' into the args.link directory."""
     if not args.link:
       return
-    filename = filename.strip('/')
 
-    if '/../' in '/%s/' % filename:
-      log.warning('cowardly refusing to link "%s"', filename)
+    filename = filename.strip('/')  # parse_filename does this too, but we
+                                    # also use 'filename' directly.
+    ok, destdir, destfile = self.parse_filename(filename)
+    if not ok:
       return
-
-    destfile = '%s/%s' % (args.link, filename)
-    destdir = destfile.rsplit('/', 1)[0]
 
     if destdir not in self.dirs:
       self.dirs[destdir] = True  # always mark as known, even if makedirs fails
@@ -261,6 +296,7 @@ class OutputDisplay(object):
     sys.stderr.flush()
 
   def valid(self, filenum, filename):
+    log.debug('VALID %s %s', filenum, filename)
     self.num_valid += 1
     # TODO: Make sure the filenames are VALID UTF-8?  Not arbitrary data.
     if args.null:
