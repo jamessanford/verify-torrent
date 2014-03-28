@@ -197,6 +197,10 @@ def VerifyTorrent(filename, output):
     end = torrent.map_file(filenum, torrent.file_at(filenum).size - 1, 1).piece
     log.debug('FILE %s %s %s', filenum, start, end)
 
+    if start > end:
+      # NOTE: This happens when a file size is zero (or negative).  Skip it.
+      continue
+
     # In cheat mode, assume that already-linked files had valid checksums.
     # This makes it much faster to scan only for new unlinked files.
     cheating = args.cheat and autolink.is_linked(filename)
