@@ -76,6 +76,10 @@ ARGS.add_argument('-s, --select-file', dest='select_file', action='store_true',
 ARGS.add_argument('filename', nargs='+', metavar='FILE.torrent',
                   help='torrent metadata file')
 
+#TODO: add "only new" mode, where valid only adds it to the output list if the autolink was successful
+#TODO: add "-l" mode that does both --cheat and --link=ln
+#TODO: add 'summary' mode (how many were valid, how many were new, and last output ...)
+
 args = None  # ARGS.parse_args()
 log = logging.getLogger('verify')
 
@@ -313,14 +317,34 @@ class OutputDisplay(object):
       self.erase_progress()
       print '%s' % filename
 
+  @staticmethod
+  def collapse_filenums(filenums):
+    result = []
+    def add_range(low, high):
+      if low == -1:
+        return
+      elif low == high:
+        result.append('%s' % low)
+      else:
+        result.append('%s-%s' % (low, high))
+
+    current_range = [-1, -1]
+    for n in filenums:
+      if n == current_range[1] + 1:
+        current_range[1] = n
+      else:
+        add_range(*current_range)
+        current_range = [n, n]
+    add_range(*current_range)
+    return ','.join(result)
+
   def finish(self):
     self.erase_progress()
     if args.select_file:
       if self.valid_filenums:
-        # TODO: could collapse this into ranges
+        ranges = self.collapse_filenums(self.valid_filenums)
         sys.stdout.write('--select-file=%s %s\n' %
-                         (','.join('%s' % v for v in self.valid_filenums),
-                          self.metadata_filename))
+                         (ranges, self.metadata_filename))
 
 
 if __name__ == '__main__':
