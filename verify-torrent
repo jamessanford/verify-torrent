@@ -70,6 +70,8 @@ ARGS.add_argument('--cheat', dest='cheat', action='store_true',
                   help='assume already-linked files have valid checksums')
 ARGS.add_argument('--link', dest='link', type=str, metavar='DIR',
                   help='link completed files into this directory')
+ARGS.add_argument('-l', dest='link_shortcut', action='store_true',
+                  help='enable --cheat and --link=ln')
 ARGS.add_argument('-s, --select-file', dest='select_file', action='store_true',
                   help='output as list of file numbers '
                        'for aria2c --select-file')
@@ -77,7 +79,6 @@ ARGS.add_argument('filename', nargs='+', metavar='FILE.torrent',
                   help='torrent metadata file')
 
 #TODO: add "only new" mode, where valid only adds it to the output list if the autolink was successful
-#TODO: add "-l" mode that does both --cheat and --link=ln
 #TODO: add 'summary' mode (how many were valid, how many were new, and last output ...)
 
 args = None  # ARGS.parse_args()
@@ -359,6 +360,10 @@ if __name__ == '__main__':
 
   if args.verbose:
     log.setLevel(logging.INFO)
+
+  if args.link_shortcut:
+    args.link = 'ln'
+    args.cheat = True
 
   for filename in args.filename:
     with OutputDisplay(filename) as output:
