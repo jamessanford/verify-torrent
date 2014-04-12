@@ -72,6 +72,8 @@ ARGS.add_argument('--link', dest='link', type=str, metavar='DIR',
                   help='link completed files into this directory')
 ARGS.add_argument('-l', dest='link_shortcut', action='store_true',
                   help='enable --cheat and --link=ln')
+ARGS.add_argument('-n, --new', dest='only_new', action='store_true',
+                  help='only show newly linked files')
 ARGS.add_argument('-s, --select-file', dest='select_file', action='store_true',
                   help='output as list of file numbers '
                        'for aria2c --select-file')
@@ -217,9 +219,11 @@ def VerifyTorrent(filename, output):
         break
     else:
       # All pieces for this file are valid!
-      output.valid(filenum, filename)
-      if args.link:
-        autolink.link(filename)
+      # TODO: FIXME: cheap hack for only_new is here...
+      if not (args.only_new and autolink.is_linked(filename)):
+        output.valid(filenum, filename)
+        if args.link:
+          autolink.link(filename)
 
 
 class CompletedFileLinker(object):
