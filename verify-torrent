@@ -63,15 +63,16 @@ ARGS.add_argument('-v, --verbose', dest='verbose', action='store_true',
 #   -vv  include log.debug?
 ARGS.add_argument('-q, --quiet', dest='quiet', action='store_true',
                   help='quiet mode, do not show progress indicator')
-# TODO: disallow combination of -0 and -s
-ARGS.add_argument('-0, -print0', dest='null', action='store_true',
-                  help='output null \\0 terminated filenames for xargs -0')
+# TODO: disallow combination of -l and --link!=ln
+ARGS.add_argument('-l', dest='link_shortcut', action='store_true',
+                  help='shortcut for --cheat and --link=ln, use this!')
 ARGS.add_argument('--cheat', dest='cheat', action='store_true',
                   help='assume already-linked files have valid checksums')
 ARGS.add_argument('--link', dest='link', type=str, metavar='DIR',
                   help='link completed files into this directory')
-ARGS.add_argument('-l', dest='link_shortcut', action='store_true',
-                  help='enable --cheat and --link=ln')
+# TODO: disallow combination of -0 and -s
+ARGS.add_argument('-0, -print0', dest='null', action='store_true',
+                  help='output null \\0 terminated filenames for xargs -0')
 ARGS.add_argument('-n, --new', dest='only_new', action='store_true',
                   help='only show newly linked files')
 ARGS.add_argument('-s, --select-file', dest='select_file', action='store_true',
@@ -80,8 +81,7 @@ ARGS.add_argument('-s, --select-file', dest='select_file', action='store_true',
 ARGS.add_argument('filename', nargs='+', metavar='FILE.torrent',
                   help='torrent metadata file')
 
-#TODO: add "only new" mode, where valid only adds it to the output list if the autolink was successful
-#TODO: add 'summary' mode (how many were valid, how many were new, and last output ...)
+# TODO: add 'summary' mode (how many were valid, how many were new, and last output ...)
 
 args = None  # ARGS.parse_args()
 log = logging.getLogger('verify')
